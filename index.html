@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pizza Palace Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .stage-container {
+            min-height: 150px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 p-4 sm:p-8">
+    <div class="max-w-7xl mx-auto bg-white shadow-xl rounded-2xl p-6 sm:p-10">
+        <h1 class="text-3xl sm:text-4xl font-extrabold text-center text-red-600 mb-6">Pizza Palace Process Simulator</h1>
+        <p class="text-center text-lg text-gray-600 mb-8">Enter the number of orders and watch them flow through the system. Pay attention to the queues!</p>
+        
+        <!-- Input and Control Area -->
+        <div class="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4 mb-8">
+            <div class="flex items-center space-x-2 w-full sm:w-auto">
+                <label for="order-count" class="text-lg font-semibold whitespace-nowrap">Number of Orders:</label>
+                <input type="number" id="order-count" value="10" min="1" class="w-full sm:w-40 p-2 border-2 border-gray-300 rounded-lg text-center font-bold text-lg focus:outline-none focus:ring-2 focus:ring-red-500">
+            </div>
+            <button id="start-button" class="w-full sm:w-auto px-6 py-3 bg-red-600 text-white font-bold text-lg rounded-lg shadow-md hover:bg-red-700 transition duration-300 transform hover:scale-105">
+                Start Simulation
+            </button>
+            <button id="stop-button" class="w-full sm:w-auto px-6 py-3 bg-gray-500 text-white font-bold text-lg rounded-lg shadow-md hover:bg-gray-600 transition duration-300 transform hover:scale-105 hidden">
+                Stop Simulation
+            </button>
+        </div>
+
+        <!-- Simulation Visualization -->
+        <div id="simulation-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Stage: Orders in Queue -->
+            <div class="bg-blue-100 p-4 rounded-lg shadow-inner stage-container">
+                <h3 class="font-bold text-blue-800 text-xl mb-3">Order Queue (<span id="orders-in-queue-count">0</span>)</h3>
+                <div id="orders-in-queue" class="flex flex-wrap gap-2"></div>
+            </div>
+
+            <!-- Stage: Prep -->
+            <div class="bg-yellow-100 p-4 rounded-lg shadow-inner stage-container">
+                <h3 class="font-bold text-yellow-800 text-xl mb-3">Prep (<span id="prep-count">0</span>)</h3>
+                <div id="prep" class="flex flex-wrap gap-2"></div>
+            </div>
+            
+            <!-- Stage: Baking -->
+            <div class="bg-orange-100 p-4 rounded-lg shadow-inner stage-container">
+                <h3 class="font-bold text-orange-800 text-xl mb-3">Baking (<span id="baking-count">0</span>)</h3>
+                <div id="baking" class="flex flex-wrap gap-2"></div>
+            </div>
+
+            <!-- Stage: Delivery Queue -->
+            <div class="bg-purple-100 p-4 rounded-lg shadow-inner stage-container">
+                <h3 class="font-bold text-purple-800 text-xl mb-3">Delivery Queue (<span id="delivery-queue-count">0</span>)</h3>
+                <div id="delivery-queue" class="flex flex-wrap gap-2"></div>
+            </div>
+
+            <!-- Stage: Delivering -->
+            <div class="bg-green-100 p-4 rounded-lg shadow-inner stage-container">
+                <h3 class="font-bold text-green-800 text-xl mb-3">Delivering (<span id="delivering-count">0</span>)</h3>
+                <div id="delivering" class="flex flex-wrap gap-2"></div>
+            </div>
+
+            <!-- Stage: Completed -->
+            <div class="bg-gray-200 p-4 rounded-lg shadow-inner stage-container">
+                <h3 class="font-bold text-gray-800 text-xl mb-3">Completed (<span id="completed-count">0</span>)</h3>
+                <div id="completed" class="flex flex-col gap-2"></div>
+            </div>
+        </div>
+        
+        <!-- Status Log -->
+        <div class="mt-8 p-6 bg-gray-50 rounded-lg shadow-inner">
+            <h3 class="text-2xl font-bold mb-4 text-red-600">Simulation Log</h3>
+            <div id="log-container" class="space-y-2 text-gray-700 max-h-64 overflow-y-auto">
+                <p>Click "Start Simulation" to begin.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const orderCountInput = document.getElementById('order-count');
+        const startButton = document.getElementById('start-button');
+        const stopButton = document.getElementById('stop-button');
+        const ordersInQueueEl = document.getElementById('orders-in-queue');
+        const prepEl = document.getElementById('prep');
+        const bakingEl = document.getElementById('baking');
+        const deliveryQueueEl = document.getElementById('delivery-queue');
+        const deliveringEl = document.getElementById('delivering');
+        const completedEl = document.getElementById('completed');
+        const logContainer = document.getElementById('log-container');
+        
+        // Counter Elements
+        const ordersInQueueCountEl = document.getElementById('orders-in-queue-count');
+        const prepCountEl = document.getElementById('prep-count');
+        const bakingCountEl = document.getElementById('baking-count');
+        const deliveryQueueCountEl = document.getElementById('delivery-queue-count');
+        const deliveringCountEl = document.getElementById('delivering-count');
+        const completedCountEl = document.getElementById('completed-count');
+
+        // Simulation Parameters (from the case study)
+        const PREP_TIME = 5; // minutes per pizza
+        const BAKING_TIME = 15; // minutes per pizza
+        const PACKING_TIME = 2; // minutes per pizza
+        const DELIVERY_TIME = 15; // minutes per driver
+        const PREP_CAPACITY = 1; // Number of people prepping
+        const OVEN_CAPACITY = 8; // Total pizzas in both ovens
+        const DRIVER_CAPACITY = 2; // Number of drivers
+
+        // Simulation State
+        let simulationInterval = null;
+        let currentTime = 0;
+        let orders = [];
+        let completedOrders = [];
+
+        // Helper function to create an order element
+        function createOrderElement(order) {
+            const el = document.createElement('div');
+            el.id = `order-${order.id}`;
+            el.className = 'w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md';
+            el.textContent = order.id;
+            el.title = `Order #${order.id}`;
+            return el;
+        }
+
+        // Helper function to log messages
+        function log(message) {
+            const p = document.createElement('p');
+            p.textContent = `[Time ${currentTime} min]: ${message}`;
+            logContainer.prepend(p);
+        }
+
+        // Render function to update the UI
+        function render() {
+            // Clear all containers
+            ordersInQueueEl.innerHTML = '';
+            prepEl.innerHTML = '';
+            bakingEl.innerHTML = '';
+            deliveryQueueEl.innerHTML = '';
+            deliveringEl.innerHTML = '';
+            completedEl.innerHTML = '';
+
+            const ordersInQueue = orders.filter(o => o.stage === 'queue');
+            const prep = orders.filter(o => o.stage === 'prep');
+            const baking = orders.filter(o => o.stage === 'baking');
+            const deliveryQueue = orders.filter(o => o.stage === 'deliveryQueue');
+            const delivering = orders.filter(o => o.stage === 'delivering');
+
+            // Render orders in each stage
+            ordersInQueue.forEach(o => ordersInQueueEl.appendChild(createOrderElement(o)));
+            prep.forEach(o => prepEl.appendChild(createOrderElement(o)));
+            baking.forEach(o => bakingEl.appendChild(createOrderElement(o)));
+            deliveryQueue.forEach(o => deliveryQueueEl.appendChild(createOrderElement(o)));
+            delivering.forEach(o => deliveringEl.appendChild(createOrderElement(o)));
+            completedOrders.forEach(o => {
+                const p = document.createElement('p');
+                p.textContent = `Order #${o.id} - Lead Time: ${o.completionTime - o.orderTime} min`;
+                p.className = 'bg-gray-100 p-2 rounded-lg';
+                completedEl.appendChild(p);
+            });
+
+            // Update counts
+            ordersInQueueCountEl.textContent = ordersInQueue.length;
+            prepCountEl.textContent = prep.length;
+            bakingCountEl.textContent = baking.length;
+            deliveryQueueCountEl.textContent = deliveryQueue.length;
+            deliveringCountEl.textContent = delivering.length;
+            completedCountEl.textContent = completedOrders.length;
+        }
+
+        // Main simulation loop
+        function simulationLoop() {
+            currentTime++;
+
+            // Move orders from queue to prep
+            const prepSlots = PREP_CAPACITY - orders.filter(o => o.stage === 'prep').length;
+            const prepQueue = orders.filter(o => o.stage === 'queue');
+            for (let i = 0; i < Math.min(prepSlots, prepQueue.length); i++) {
+                const order = prepQueue[i];
+                order.stage = 'prep';
+                order.prepStartTime = currentTime;
+                log(`Order #${order.id} moved to Prep.`);
+            }
+
+            // Move orders from prep to baking
+            const readyForBaking = orders.filter(o => o.stage === 'prep' && (currentTime - o.prepStartTime) >= PREP_TIME);
+            const bakingSlots = OVEN_CAPACITY - orders.filter(o => o.stage === 'baking').length;
+            for (let i = 0; i < Math.min(bakingSlots, readyForBaking.length); i++) {
+                const order = readyForBaking[i];
+                order.stage = 'baking';
+                order.bakingStartTime = currentTime;
+                log(`Order #${order.id} moved to Baking.`);
+            }
+
+            // Move orders from baking to delivery queue
+            const readyForDeliveryQueue = orders.filter(o => o.stage === 'baking' && (currentTime - o.bakingStartTime) >= (BAKING_TIME + PACKING_TIME));
+            readyForDeliveryQueue.forEach(order => {
+                order.stage = 'deliveryQueue';
+                log(`Order #${order.id} finished baking and is on the Delivery Shelf.`);
+            });
+
+            // Move orders from delivery queue to drivers
+            const driverSlots = DRIVER_CAPACITY - orders.filter(o => o.stage === 'delivering').length;
+            const deliveryQueue = orders.filter(o => o.stage === 'deliveryQueue');
+            for (let i = 0; i < Math.min(driverSlots, deliveryQueue.length); i++) {
+                const order = deliveryQueue[i];
+                order.stage = 'delivering';
+                order.deliveryStartTime = currentTime;
+                log(`Order #${order.id} is now with a driver.`);
+            }
+
+            // Complete delivered orders
+            const deliveredOrders = orders.filter(o => o.stage === 'delivering' && (currentTime - o.deliveryStartTime) >= DELIVERY_TIME);
+            deliveredOrders.forEach(order => {
+                order.completionTime = currentTime;
+                order.stage = 'completed';
+                completedOrders.push(order);
+                log(`Order #${order.id} delivered! Lead Time: ${order.completionTime - order.orderTime} min.`);
+            });
+            
+            // Remove completed orders from the active list
+            orders = orders.filter(o => o.stage !== 'completed');
+            
+            // Render the updated state
+            render();
+
+            // Stop the simulation if all orders are completed
+            if (orders.length === 0 && currentTime > 0) {
+                clearInterval(simulationInterval);
+                simulationInterval = null;
+                startButton.disabled = false;
+                startButton.classList.remove('hidden');
+                stopButton.classList.add('hidden');
+                log("Simulation finished.");
+            }
+        }
+
+        // Start button handler
+        startButton.addEventListener('click', () => {
+            const count = parseInt(orderCountInput.value, 10);
+            if (isNaN(count) || count <= 0) {
+                alert("Please enter a valid number of orders.");
+                return;
+            }
+            
+            // Reset simulation state
+            orders = Array.from({ length: count }, (_, i) => ({
+                id: i + 1,
+                orderTime: 0, // Assume all orders are placed at time 0 for simplicity
+                stage: 'queue'
+            }));
+            completedOrders = [];
+            currentTime = 0;
+            logContainer.innerHTML = '';
+
+            startButton.classList.add('hidden');
+            stopButton.classList.remove('hidden');
+            startButton.disabled = true;
+
+            log(`Starting simulation for ${count} orders.`);
+            render();
+            simulationInterval = setInterval(simulationLoop, 1000); // 1000ms = 1 minute simulation time
+        });
+
+        // Stop button handler
+        stopButton.addEventListener('click', () => {
+            if (simulationInterval) {
+                clearInterval(simulationInterval);
+                simulationInterval = null;
+                startButton.classList.remove('hidden');
+                stopButton.classList.add('hidden');
+                startButton.disabled = false;
+                log("Simulation stopped by user.");
+            }
+        });
+    </script>
+</body>
+</html>
